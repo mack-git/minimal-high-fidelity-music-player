@@ -39,6 +39,7 @@ interface Track {
   albumArt?: string
   url: string
   addedAt: number
+  filePath?: string // Add file path for persistence
 }
 
 type SortOption = 'title' | 'artist' | 'album' | 'duration' | 'dateAdded'
@@ -50,6 +51,13 @@ const SORT_OPTIONS: { value: SortOption; label: string }[] = [
   { value: 'album', label: 'Album (A-Z)' },
   { value: 'duration', label: 'Duration' },
 ]
+
+// Storage keys
+const STORAGE_KEYS = {
+  THEME_COLOR: 'music_player_theme_color',
+  FILE_PATHS: 'music_player_file_paths',
+  LIBRARY_METADATA: 'music_player_library_metadata',
+}
 
 export default function MusicPlayer() {
   const [tracks, setTracks] = useState<Track[]>([])
@@ -73,6 +81,71 @@ export default function MusicPlayer() {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const currentTrack = currentTrackIndex !== null ? tracks[currentTrackIndex] : null
+
+  // Load saved theme color on mount
+  useEffect(() => {
+    const savedTheme = localStorage.getItem(STORAGE_KEYS.THEME_COLOR)
+    if (savedTheme) {
+      setThemeColor(savedTheme)
+    }
+  }, [])
+
+  // Load saved music library on mount
+  useEffect(() => {
+    const loadSavedLibrary = async () => {
+      const savedMetadata = localStorage.getItem(STORAGE_KEYS.LIBRARY_METADATA)
+      if (!savedMetadata) return
+
+      try {
+        const metadata = JSON.parse(savedMetadata)
+        if (!metadata || metadata.length === 0) return
+
+        setIsScanning(true)
+        
+        // Create a file input to re-select the folder
+        const input = document.createElement('input')
+        input.type = 'file'
+        // @ts-ignore
+        input.webkitdirectory = true
+        input.multiple = true
+        
+        // Auto-trigger to reload previous folder
+        const filePaths = metadata.map((m: any) => m.path)
+        
+        // We'll need to ask user to reload the folder since we can't access files directly
+        // But we saved the metadata to make it faster
+        console.log('Saved library found. Use "Load Folder" to restore your music.')
+        
+      } catch (error) {
+        console.error('Error loading saved library:', error)
+      } finally {
+        setIsScanning(false)
+      }
+    }
+
+    loadSavedLibrary()
+  }, [])
+
+  // Save theme color when it changes
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.THEME_COLOR, themeColor)
+  }, [themeColor])
+
+  // Save library metadata when tracks change
+  useEffect(() => {
+    if (tracks.length === 0) return
+
+    const metadata = tracks.map(track => ({
+      path: track.filePath || track.file.name,
+      title: track.title,
+      artist: track.artist,
+      album: track.album,
+      duration: track.duration,
+      addedAt: track.addedAt,
+    }))
+
+    localStorage.setItem(STORAGE_KEYS.LIBRARY_METADATA, JSON.stringify(metadata))
+  }, [tracks])
 
   // Apply theme color
   useEffect(() => {
@@ -209,6 +282,7 @@ export default function MusicPlayer() {
             albumArt,
             url,
             addedAt: Date.now(),
+            filePath: (file as any).path || file.name, // Store file path for Tauri
           })
         } catch (error) {
           resolve({
@@ -220,6 +294,7 @@ export default function MusicPlayer() {
             duration,
             url,
             addedAt: Date.now(),
+            filePath: (file as any).path || file.name,
           })
         }
       })
